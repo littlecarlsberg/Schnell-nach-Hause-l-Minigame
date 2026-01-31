@@ -2,1097 +2,290 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Schnell nach Hause</title>
+    <title>Schnell nach Hause - Das Minigame</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
-        
-        * {
+        body {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            background: #0a0a14;
+            background-color: #000000; /* Schwarzer Hintergrund wie im Briefing [cite: 25] */
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
+            height: 100vh;
+            color: white;
+            font-family: 'Courier New', Courier, monospace; /* Retro Feeling */
             overflow: hidden;
-            font-family: 'VT323', monospace;
         }
-        
-        #game-container {
-            position: relative;
+        #gameCanvas {
+            border: 2px solid #333;
+            background-color: #111;
+            image-rendering: pixelated; /* Für den PS1/Low Poly Look [cite: 23] */
         }
-        
-        canvas {
-            display: block;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3), 0 0 40px rgba(255, 0, 255, 0.2);
-        }
-        
-        #touch-controls {
-            display: none;
-            position: fixed;
-            bottom: 20px;
-            left: 0;
-            right: 0;
-            padding: 0 20px;
-            z-index: 100;
-        }
-        
-        .touch-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .touch-btn {
-            width: 70px;
-            height: 70px;
-            border: 3px solid #0ff;
-            border-radius: 50%;
-            background: rgba(0, 255, 255, 0.1);
-            color: #0ff;
-            font-family: 'Press Start 2P', cursive;
-            font-size: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            user-select: none;
-            -webkit-user-select: none;
-            touch-action: manipulation;
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
-        }
-        
-        .touch-btn:active {
-            background: rgba(0, 255, 255, 0.3);
-        }
-        
-        .touch-btn.jump {
-            width: 90px;
-            height: 90px;
-            border-color: #f0f;
-            background: rgba(255, 0, 255, 0.1);
-            color: #f0f;
-        }
-        
-        .dpad {
-            display: flex;
-            gap: 10px;
-        }
-        
-        @media (max-width: 900px), (pointer: coarse) {
-            #touch-controls {
-                display: block;
-            }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
         }
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <canvas id="game"></canvas>
-    </div>
+
+<div id="ui">
+    <h1>Schnell nach Hause</h1> <p>Punkte: <span id="score">0</span> | Level: <span id="level">1</span></p>
+    <p style="font-size: 12px; color: #aaa;">[LEERTASTE] zum Springen (bis zu 3x!) </p>
+</div>
+
+<canvas id="gameCanvas" width="800" height="450"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // --- SPIEL VARIABLEN ---
+    let score = 0;
+    let gameRunning = true;
+    let frame = 0;
+    let level = 1;
+    const gravity = 0.6;
     
-    <div id="touch-controls">
-        <div class="touch-row">
-            <div class="dpad">
-                <button class="touch-btn" id="btn-left">◀</button>
-                <button class="touch-btn" id="btn-right">▶</button>
-            </div>
-            <button class="touch-btn jump" id="btn-jump">▲</button>
-        </div>
-    </div>
+    // Bilder laden
+    const charImg = new Image();
+    charImg.src = 'charakter.png'; // Dein hochgeladener Charakter
     
-    <script>
-        // ============================================
-        // GAME CONFIGURATION
-        // ============================================
-        const GAME_WIDTH = 800;
-        const GAME_HEIGHT = 600;
-        const TILE_SIZE = 50; // Größere Tiles für bessere Bildschirmnutzung
-        
-        // Physics
-        const GRAVITY = 1800;
-        const JUMP_FORCE = 580;
-        const MOVE_SPEED = 280;
-        const MAX_FALL_SPEED = 700;
-        
-        // Colors
-        const COLORS = {
-            bg: '#0a0a14',
-            cyan: '#00ffff',
-            magenta: '#ff00ff',
-            yellow: '#ffff00',
-            green: '#00ff80',
-            red: '#ff3232',
-            white: '#ffffff',
-            darkGray: '#1e1e28',
-            beanie: '#c83232',
-            hoodie: '#32b450',
-            jeans: '#6490b4',
-            skin: '#dcb496',
-            sneakers: '#3ca05a',
-        };
-        
-        // ============================================
-        // CANVAS SETUP
-        // ============================================
-        const canvas = document.getElementById('game');
-        const ctx = canvas.getContext('2d');
-        canvas.width = GAME_WIDTH;
-        canvas.height = GAME_HEIGHT;
-        
-        // ============================================
-        // GAME STATE
-        // ============================================
-        let gameState = {
-            scene: 'start',
-            score: 0,
-            level: 0,
-            highScore: parseInt(localStorage.getItem('schnellNachHause_highScore')) || 0,
-            coins: 0,
-            pizzas: 0,
-            screenShake: 0,
-            flashAlpha: 0,
-            cameraX: 0, // For scrolling
-        };
-        
-        let player = null;
-        let platforms = [];
-        let coins = [];
-        let pizzas = [];
-        let hazards = [];
-        let stairs = [];
-        let cars = [];
-        let door = null;
-        let buildings = [];
-        let particles = [];
-        
-        // Input
-        let keys = {};
-        let touchInput = { left: false, right: false, jump: false };
-        
-        // ============================================
-        // LEVEL DEFINITIONS
-        // ============================================
-        // Legend:
-        // = : Ground (at bottom)
-        // # : Building (background decoration)
-        // @ : Player spawn
-        // $ : Coin
-        // P : Pizza power-up
-        // D : Door (goal)
-        // B : Box (obstacle to jump over)
-        // S : Stair step
-        
-        const LEVELS = [
-            {
-                name: 'Kreuzberg',
-                map: [
-                    '####    ######      ####  ########      ####    ######      ####    ####',
-                    '####    ######      ####  ########      ####    ######      ####    ####',
-                    '####    ######  $   ####  ########  $   ####    ######  $   ####    ####',
-                    '####    ######      ####  ########      ####    ######      ####    ####',
-                    '#### $  ######      #### $########      #### $  ######      ####  $ ####',
-                    '####    ######  P   ####  ########  $   ####    ######  P   ####    ####',
-                    '####    ######      ####  ########      ####    ######      ####    ####',
-                    '####    ######  $   ####  ########  P   ####    ######  $   ####    # D ',
-                    '####    ######      ####  ########      ####    ######      ####    # S ',
-                    '####    ######      ####  ########      ####    ######      ####    #SS ',
-                    '@                                                               BB  SSS ',
-                    '========BB======BB==========BB======BB=========BB=============BB==SSSS=',
-                ],
-            },
-            {
-                name: 'Tempelhof',
-                map: [
-                    '  ######    ####      ########    ####      ######    ####      ####    ',
-                    '  ######    ####      ########    ####      ######    ####      ####    ',
-                    '  ######    ####  $   ########    ####  $   ######    ####  $   ####    ',
-                    '  ######  $ ####      ########  $ ####      ######  $ ####      ####    ',
-                    '  ######    ####      ########    ####      ######    ####      ####    ',
-                    '  ######    ####  P   ########    ####  $   ######    ####  P   ####    ',
-                    '  ######  $ ####      ########  $ ####      ######  $ ####      ####    ',
-                    '  ######    ####  $   ########    ####  P   ######    ####  $   ## D    ',
-                    '  ######    ####      ########    ####      ######    ####      ## S    ',
-                    '  ######    ####      ########    ####      ######    ####      ##SS    ',
-                    '@                                                             BB SSS    ',
-                    '=====BB====BB=====BB=======BB====BB======BB====BB========BB===SSSS======',
-                ],
-            },
-            {
-                name: 'Schöneberg',
-                map: [
-                    '########  ####    ######    ####  ########    ####    ######    ####    ',
-                    '########  ####    ######    ####  ########    ####    ######    ####    ',
-                    '########  ####  $ ######  $ ####  ########  $ ####    ######  $ ####    ',
-                    '########  ####    ######    ####  ########    ####  $ ######    ####    ',
-                    '########$ ####    ######  $ ####  ########    ####    ######    ####    ',
-                    '########  ####  P ######    ####  ########  $ ####    ######  P ####    ',
-                    '########  ####    ######    ####$ ########    ####    ######    ####    ',
-                    '########  ####  $ ######  P ####  ########    ####  $ ######    ## D    ',
-                    '########  ####    ######    ####  ########    ####    ######    ## S    ',
-                    '########  ####    ######    ####  ########    ####    ######    ##SS    ',
-                    '@                                                             BB SSS  $ ',
-                    '====BB===BB====BB=====BB===BB====BB=====BB===BB=========BB====SSSS======',
-                ],
-            },
-        ];
-        
-        // ============================================
-        // AUDIO SYSTEM
-        // ============================================
-        let audioCtx = null;
-        
-        function getAudioContext() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            return audioCtx;
-        }
-        
-        function playTone(freq, duration, type = 'square', volume = 0.1) {
-            try {
-                const ctx = getAudioContext();
-                if (ctx.state === 'suspended') ctx.resume();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = type;
-                osc.frequency.setValueAtTime(freq, ctx.currentTime);
-                gain.gain.setValueAtTime(volume, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + duration);
-            } catch (e) {}
-        }
-        
-        function playJumpSound() {
-            playTone(300, 0.1, 'square', 0.08);
-            setTimeout(() => playTone(400, 0.1, 'square', 0.06), 50);
-        }
-        
-        function playCoinSound() {
-            playTone(800, 0.1, 'square', 0.08);
-            setTimeout(() => playTone(1000, 0.15, 'square', 0.06), 50);
-        }
-        
-        function playPizzaSound() {
-            playTone(600, 0.1, 'sine', 0.1);
-            setTimeout(() => playTone(800, 0.1, 'sine', 0.08), 80);
-            setTimeout(() => playTone(1000, 0.2, 'sine', 0.06), 160);
-        }
-        
-        function playFlipSound() {
-            playTone(200, 0.2, 'sawtooth', 0.1);
-            setTimeout(() => playTone(400, 0.2, 'sawtooth', 0.08), 100);
-        }
-        
-        function playDeathSound() {
-            playTone(400, 0.1, 'square', 0.1);
-            setTimeout(() => playTone(300, 0.1, 'square', 0.08), 100);
-            setTimeout(() => playTone(200, 0.2, 'square', 0.06), 200);
-        }
-        
-        function playDoorSound() {
-            playTone(500, 0.1, 'sine', 0.1);
-            setTimeout(() => playTone(600, 0.1, 'sine', 0.1), 100);
-            setTimeout(() => playTone(800, 0.2, 'sine', 0.1), 200);
-        }
-        
-        // ============================================
-        // PARTICLE SYSTEM
-        // ============================================
-        function spawnParticles(x, y, color, count = 5, speed = 150) {
-            for (let i = 0; i < count; i++) {
-                particles.push({
-                    x, y,
-                    vx: (Math.random() - 0.5) * speed * 2,
-                    vy: (Math.random() - 0.5) * speed * 2,
-                    size: 4 + Math.random() * 4,
-                    color,
-                    life: 1,
-                    decay: 2 + Math.random(),
-                });
-            }
-        }
-        
-        function updateParticles(dt) {
-            particles = particles.filter(p => {
-                p.x += p.vx * dt;
-                p.y += p.vy * dt;
-                p.life -= p.decay * dt;
-                return p.life > 0;
-            });
-        }
-        
-        function drawParticles() {
-            particles.forEach(p => {
-                ctx.globalAlpha = p.life;
-                ctx.fillStyle = p.color;
-                ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
-            });
-            ctx.globalAlpha = 1;
-        }
-        
-        // ============================================
-        // PLAYER
-        // ============================================
-        function createPlayer(x, y) {
-            return {
-                x, y,
-                width: 20,
-                height: 44,
-                vx: 0,
-                vy: 0,
-                grounded: false,
-                facingRight: true,
-                jumpsLeft: 2, // Double jump: 2 jumps available
-                maxJumps: 2,
-            };
-        }
-        
-        function drawPlayer(p) {
-            const cx = p.x + p.width / 2;
-            const cy = p.y + p.height / 2;
-            
-            ctx.save();
-            ctx.translate(cx, cy);
-            
-            // Flip sprite based on direction
-            if (!p.facingRight) ctx.scale(-1, 1);
-            
-            // Legs/Jeans
-            ctx.fillStyle = COLORS.jeans;
-            ctx.strokeStyle = COLORS.cyan;
-            ctx.lineWidth = 1;
-            ctx.fillRect(-8, 6, 7, 16);
-            ctx.strokeRect(-8, 6, 7, 16);
-            ctx.fillRect(1, 6, 7, 16);
-            ctx.strokeRect(1, 6, 7, 16);
-            
-            // Sneakers
-            ctx.fillStyle = COLORS.sneakers;
-            ctx.fillRect(-9, 20, 8, 5);
-            ctx.strokeRect(-9, 20, 8, 5);
-            ctx.fillRect(1, 20, 8, 5);
-            ctx.strokeRect(1, 20, 8, 5);
-            
-            // Body/Hoodie
-            ctx.fillStyle = COLORS.hoodie;
-            ctx.fillRect(-10, -10, 20, 18);
-            ctx.strokeRect(-10, -10, 20, 18);
-            
-            // Hoodie pocket
-            ctx.fillStyle = '#28963c';
-            ctx.fillRect(-6, 0, 12, 5);
-            
-            // Head
-            ctx.fillStyle = COLORS.skin;
-            ctx.fillRect(-6, -20, 12, 11);
-            ctx.strokeRect(-6, -20, 12, 11);
-            
-            // Beanie
-            ctx.fillStyle = COLORS.beanie;
-            ctx.fillRect(-7, -28, 14, 9);
-            ctx.strokeRect(-7, -28, 14, 9);
-            
-            // Beanie fold
-            ctx.fillStyle = '#a02828';
-            ctx.fillRect(-7, -20, 14, 3);
-            
-            // Eyes
-            ctx.fillStyle = '#282828';
-            ctx.fillRect(-3, -16, 2, 2);
-            ctx.fillRect(2, -16, 2, 2);
-            
-            ctx.restore();
-        }
-        
-        function updatePlayer(dt) {
-            if (!player) return;
-            
-            // Input
-            let moveDir = 0;
-            if (keys['ArrowLeft'] || keys['KeyA'] || touchInput.left) moveDir -= 1;
-            if (keys['ArrowRight'] || keys['KeyD'] || touchInput.right) moveDir += 1;
-            
-            player.vx = moveDir * MOVE_SPEED;
-            if (moveDir !== 0) player.facingRight = moveDir > 0;
-            
-            // Gravity (always down)
-            player.vy += GRAVITY * dt;
-            
-            // Clamp fall speed
-            if (player.vy > MAX_FALL_SPEED) {
-                player.vy = MAX_FALL_SPEED;
-            }
-            
-            // Move X
-            player.x += player.vx * dt;
-            
-            // Collision X
-            platforms.forEach(plat => {
-                if (rectCollision(player, plat)) {
-                    if (player.vx > 0) player.x = plat.x - player.width;
-                    else if (player.vx < 0) player.x = plat.x + plat.width;
-                }
-            });
-            
-            // Move Y
-            player.y += player.vy * dt;
-            player.grounded = false;
-            
-            // Collision Y
-            platforms.forEach(plat => {
-                if (rectCollision(player, plat)) {
-                    if (player.vy > 0) {
-                        player.y = plat.y - player.height;
-                        player.vy = 0;
-                        player.grounded = true;
-                        player.jumpsLeft = player.maxJumps; // Reset double jump when landing
-                    } else if (player.vy < 0) {
-                        player.y = plat.y + plat.height;
-                        player.vy = 0;
-                    }
-                }
-            });
-            
-            // Screen bounds (left side only)
-            if (player.x < 0) player.x = 0;
-            
-            // Update camera to follow player
-            const targetCameraX = player.x - GAME_WIDTH / 3;
-            gameState.cameraX = Math.max(0, targetCameraX);
-            
-            // Fall off screen = death
-            if (player.y > GAME_HEIGHT + 100) {
-                playerDeath();
-            }
-        }
-        
-        function playerJump() {
-            if (player && player.jumpsLeft > 0) {
-                // Double jump has slightly less force
-                const jumpForce = player.grounded ? JUMP_FORCE : JUMP_FORCE * 0.85;
-                player.vy = -jumpForce;
+    const bgImg = new Image();
+    bgImg.src = 'hintergrund.png'; // Deine hochgeladene Stadt
+
+    // --- SPIELER (Der Charakter) ---
+    const player = {
+        x: 50,
+        y: 300,
+        width: 40,  // Angepasst an Low Poly Maße
+        height: 70,
+        dy: 0,
+        jumpPower: -12,
+        grounded: false,
+        jumpCount: 0,
+        maxJumps: 3 // "Vielleicht 3-4 mal sogar" 
+    };
+
+    // --- OBJEKTE ---
+    let pizzas = []; // Sammelobjekte [cite: 16]
+    let obstacles = []; // Autos und Boxen [cite: 27, 15]
+    let finishLine = 10000; // Entfernung zur Tür
+    let distanceTraveled = 0;
+
+    // --- STEUERUNG ---
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            // Mehrfachsprung Logik 
+            if (player.jumpCount < player.maxJumps) {
+                player.dy = player.jumpPower;
+                player.jumpCount++;
                 player.grounded = false;
-                player.jumpsLeft--;
+            }
+        }
+        if (e.code === 'Enter' && !gameRunning) {
+            location.reload(); // Neustart
+        }
+    });
+
+    // --- HILFSFUNKTIONEN ---
+    function spawnObstacle() {
+        // Zufällig Auto oder Box
+        const type = Math.random() > 0.5 ? 'car' : 'box';
+        const obs = {
+            x: canvas.width + Math.random() * 200,
+            y: type === 'car' ? 380 : 350, // Autos unten, Boxen etwas höher
+            width: type === 'car' ? 60 : 40,
+            height: type === 'car' ? 30 : 40,
+            type: type,
+            speed: type === 'car' ? 6 : 4 // Autos sind schneller
+        };
+        obstacles.push(obs);
+    }
+
+    function spawnPizza() {
+        const pizza = {
+            x: canvas.width + Math.random() * 300,
+            y: 200 + Math.random() * 100, // In der Luft für Sprünge
+            width: 30,
+            height: 30,
+            collected: false
+        };
+        pizzas.push(pizza);
+    }
+
+    // --- UPDATE LOOP ---
+    function update() {
+        if (!gameRunning) return;
+
+        // Spieler Physik
+        player.dy += gravity;
+        player.y += player.dy;
+
+        // Bodenkollision (Simulierter Boden bei y=400)
+        if (player.y + player.height > 400) {
+            player.y = 400 - player.height;
+            player.dy = 0;
+            player.grounded = true;
+            player.jumpCount = 0; // Sprünge resetten
+        }
+
+        // Bewegung der Welt (Wir laufen nach rechts -> Welt nach links)
+        distanceTraveled += 5;
+
+        // Hindernisse
+        if (frame % 120 === 0) spawnObstacle();
+        obstacles.forEach((obs, index) => {
+            obs.x -= obs.speed;
+            
+            // Kollision mit Hindernis
+            if (
+                player.x < obs.x + obs.width &&
+                player.x + player.width > obs.x &&
+                player.y < obs.y + obs.height &&
+                player.y + player.height > obs.y
+            ) {
+                gameOver();
+            }
+
+            // Aufräumen
+            if (obs.x + obs.width < 0) obstacles.splice(index, 1);
+        });
+
+        // Pizzas
+        if (frame % 100 === 0) spawnPizza();
+        pizzas.forEach((pizza, index) => {
+            if (!pizza.collected) {
+                pizza.x -= 4; // Bewegt sich mit der Welt
                 
-                playJumpSound();
-                
-                // Different particle color for double jump
-                const particleColor = player.jumpsLeft === 1 ? COLORS.cyan : COLORS.magenta;
-                spawnParticles(player.x + player.width/2, player.y + player.height, particleColor, 5);
-            }
-        }
-        
-        function playerDeath() {
-            if (!player) return;
-            gameState.screenShake = 15;
-            playDeathSound();
-            spawnParticles(player.x + player.width/2, player.y + player.height/2, COLORS.red, 15, 200);
-            player = null;
-            setTimeout(() => loadLevel(gameState.level), 500);
-        }
-        
-        // ============================================
-        // COLLISION
-        // ============================================
-        function rectCollision(a, b) {
-            return a.x < b.x + b.width &&
-                   a.x + a.width > b.x &&
-                   a.y < b.y + b.height &&
-                   a.y + a.height > b.y;
-        }
-        
-        // ============================================
-        // LEVEL LOADING
-        // ============================================
-        function loadLevel(levelIndex) {
-            if (levelIndex >= LEVELS.length) {
-                gameState.scene = 'win';
-                return;
-            }
-            
-            gameState.level = levelIndex;
-            
-            platforms = [];
-            coins = [];
-            pizzas = [];
-            hazards = []; // Now used for boxes (no damage)
-            stairs = []; // Stair steps
-            cars = [];
-            buildings = [];
-            door = null;
-            particles = [];
-            player = null;
-            
-            const level = LEVELS[levelIndex];
-            
-            level.map.forEach((row, y) => {
-                [...row].forEach((char, x) => {
-                    const px = x * TILE_SIZE;
-                    const py = y * TILE_SIZE;
-                    
-                    switch(char) {
-                        case '=':
-                            platforms.push({ x: px, y: py, width: TILE_SIZE, height: TILE_SIZE, type: 'ground' });
-                            break;
-                        case '#':
-                            buildings.push({ 
-                                x: px, 
-                                y: py, 
-                                width: TILE_SIZE, 
-                                height: TILE_SIZE, 
-                                lit: Math.random() > 0.6,
-                                lightColor: Math.random() > 0.5 ? COLORS.yellow : COLORS.cyan
-                            });
-                            break;
-                        case '@':
-                            player = createPlayer(px, py - 20);
-                            break;
-                        case '$':
-                            coins.push({ x: px + TILE_SIZE/2, y: py + TILE_SIZE/2, size: 10, collected: false });
-                            break;
-                        case 'P':
-                            pizzas.push({ x: px + TILE_SIZE/2, y: py + TILE_SIZE/2, size: 16, collected: false });
-                            break;
-                        case 'D':
-                            door = { x: px, y: py - TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2 };
-                            break;
-                        case 'B':
-                            // Box - obstacle to jump over (acts as platform, no damage)
-                            hazards.push({ x: px, y: py, width: TILE_SIZE, height: TILE_SIZE, type: 'box' });
-                            // Also add as platform so player can stand on it
-                            platforms.push({ x: px, y: py, width: TILE_SIZE, height: TILE_SIZE, type: 'box' });
-                            break;
-                        case 'S':
-                            // Stair step - platform you can walk/jump on
-                            stairs.push({ x: px, y: py, width: TILE_SIZE, height: TILE_SIZE });
-                            platforms.push({ x: px, y: py, width: TILE_SIZE, height: TILE_SIZE, type: 'stair' });
-                            break;
-                    }
-                });
-            });
-            
-            // Spawn background cars (side view, driving on street behind buildings)
-            for (let i = 0; i < 5; i++) {
-                cars.push({
-                    x: Math.random() * GAME_WIDTH * 3,
-                    y: GAME_HEIGHT - 200 - Math.random() * 100, // Behind buildings
-                    width: 80 + Math.random() * 40,
-                    height: 35 + Math.random() * 15,
-                    speed: (100 + Math.random() * 80) * (Math.random() > 0.5 ? 1 : -1),
-                    color: `hsl(${Math.random() * 360}, 50%, 40%)`,
-                    isBackground: true,
-                });
-            }
-        }
-        
-        // ============================================
-        // UPDATE GAME
-        // ============================================
-        function updateGame(dt) {
-            if (!player) return;
-            
-            updatePlayer(dt);
-            updateParticles(dt);
-            
-            // Screen shake decay
-            if (gameState.screenShake > 0) gameState.screenShake *= 0.9;
-            if (gameState.flashAlpha > 0) gameState.flashAlpha -= dt * 2;
-            
-            // Coins
-            coins.forEach(coin => {
-                if (!coin.collected && player) {
-                    const dx = player.x + player.width/2 - coin.x;
-                    const dy = player.y + player.height/2 - coin.y;
-                    if (Math.sqrt(dx*dx + dy*dy) < 25) {
-                        coin.collected = true;
-                        gameState.score += 10;
-                        gameState.coins++;
-                        playCoinSound();
-                        spawnParticles(coin.x, coin.y, COLORS.yellow, 8);
-                    }
-                }
-            });
-            
-            // Pizzas
-            pizzas.forEach(pizza => {
-                if (!pizza.collected && player) {
-                    const dx = player.x + player.width/2 - pizza.x;
-                    const dy = player.y + player.height/2 - pizza.y;
-                    if (Math.sqrt(dx*dx + dy*dy) < 30) {
-                        pizza.collected = true;
-                        gameState.score += 50;
-                        gameState.pizzas++;
-                        playPizzaSound();
-                        spawnParticles(pizza.x, pizza.y, '#ffb432', 12, 200);
-                    }
-                }
-            });
-            
-            // Boxes are now just obstacles - no damage (collision handled by platforms)
-            // Hazard collision removed for testing
-            
-            // Background cars (just move, no collision)
-            cars.forEach(car => {
-                car.x += car.speed * dt;
-                // Wrap around with extra buffer for wider level
-                if (car.x > GAME_WIDTH * 4) car.x = -car.width - 100;
-                if (car.x < -car.width - 100) car.x = GAME_WIDTH * 4;
-            });
-            
-            // Door (goal)
-            if (door && player && rectCollision(player, door)) {
-                playDoorSound();
-                gameState.level++;
-                if (gameState.level >= LEVELS.length) {
-                    gameState.scene = 'win';
-                } else {
-                    loadLevel(gameState.level);
+                // Kollision mit Pizza
+                if (
+                    player.x < pizza.x + pizza.width &&
+                    player.x + player.width > pizza.x &&
+                    player.y < pizza.y + pizza.height &&
+                    player.y + player.height > pizza.y
+                ) {
+                    pizza.collected = true;
+                    score += 10; // Punkte sammeln [cite: 17]
+                    document.getElementById('score').innerText = score;
                 }
             }
+        });
+
+        // Level Ende (Tür erreichen) 
+        if (distanceTraveled >= finishLine) {
+            levelComplete();
         }
-        
-        // ============================================
-        // DRAW GAME
-        // ============================================
-        function drawGame() {
-            ctx.save();
-            
-            // Screen shake
-            if (gameState.screenShake > 0.5) {
-                ctx.translate(
-                    (Math.random() - 0.5) * gameState.screenShake,
-                    (Math.random() - 0.5) * gameState.screenShake
-                );
+
+        frame++;
+    }
+
+    // --- DRAW LOOP ---
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Hintergrund (Parallax Effekt simuliert)
+        // Zeichnet das Bild oder ein Fallback, falls Bild nicht da ist
+        try {
+            if(bgImg.complete) {
+                ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+            } else {
+                // Fallback: Bunte Gebäude auf schwarzem Grund [cite: 25]
+                ctx.fillStyle = "#000"; 
+                ctx.fillRect(0,0, canvas.width, canvas.height);
+                ctx.fillStyle = "#e6be45"; // Gebäude Farbe aus deinem Bild
+                ctx.fillRect(100, 100, 100, 300);
+                ctx.fillStyle = "#e66b45";
+                ctx.fillRect(300, 150, 120, 250);
             }
-            
-            // Background
-            ctx.fillStyle = COLORS.bg;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            // Background street (where cars drive)
-            ctx.fillStyle = '#1a1a24';
-            ctx.fillRect(-gameState.cameraX * 0.3, GAME_HEIGHT - 280, GAME_WIDTH * 5, 100);
-            
-            // Street lane markings
-            ctx.strokeStyle = '#3a3a4a';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([20, 30]);
-            ctx.beginPath();
-            ctx.moveTo(-gameState.cameraX * 0.3, GAME_HEIGHT - 230);
-            ctx.lineTo(-gameState.cameraX * 0.3 + GAME_WIDTH * 5, GAME_HEIGHT - 230);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Apply camera offset for scrolling
-            ctx.save();
-            ctx.translate(-gameState.cameraX, 0);
-            
-            // Background cars (side view - behind buildings)
-            cars.forEach(car => {
-                ctx.globalAlpha = 0.5;
-                
-                // Car body
-                ctx.fillStyle = car.color;
-                ctx.strokeStyle = '#333';
-                ctx.lineWidth = 1;
-                ctx.fillRect(car.x, car.y, car.width, car.height * 0.6);
-                
-                // Car roof/cabin
-                const cabinWidth = car.width * 0.5;
-                const cabinX = car.x + car.width * 0.2;
-                ctx.fillRect(cabinX, car.y - car.height * 0.3, cabinWidth, car.height * 0.35);
-                
-                // Windows
-                ctx.fillStyle = COLORS.cyan;
-                ctx.globalAlpha = 0.3;
-                ctx.fillRect(cabinX + 4, car.y - car.height * 0.25, cabinWidth * 0.4, car.height * 0.25);
-                ctx.fillRect(cabinX + cabinWidth * 0.5, car.y - car.height * 0.25, cabinWidth * 0.4, car.height * 0.25);
-                
-                // Wheels
-                ctx.globalAlpha = 0.6;
-                ctx.fillStyle = '#222';
-                const wheelRadius = car.height * 0.25;
+        } catch(e) {}
+
+        // Straße
+        ctx.fillStyle = "#333";
+        ctx.fillRect(0, 400, canvas.width, 50);
+
+        // Spieler zeichnen
+        if (charImg.complete) {
+            ctx.drawImage(charImg, player.x, player.y, player.width, player.height);
+        } else {
+            // Fallback: Grüner Hoodie, Blaue Hose
+            ctx.fillStyle = "#2ecc71"; // Grün
+            ctx.fillRect(player.x, player.y, player.width, player.height/2);
+            ctx.fillStyle = "#3498db"; // Blau
+            ctx.fillRect(player.x, player.y + player.height/2, player.width, player.height/2);
+        }
+
+        // Hindernisse zeichnen
+        obstacles.forEach(obs => {
+            if (obs.type === 'car') {
+                ctx.fillStyle = "red"; // Autos [cite: 28]
+                // Simuliertes "Low Poly" Auto
                 ctx.beginPath();
-                ctx.arc(car.x + car.width * 0.2, car.y + car.height * 0.6, wheelRadius, 0, Math.PI * 2);
-                ctx.arc(car.x + car.width * 0.8, car.y + car.height * 0.6, wheelRadius, 0, Math.PI * 2);
+                ctx.moveTo(obs.x, obs.y + obs.height);
+                ctx.lineTo(obs.x + obs.width, obs.y + obs.height);
+                ctx.lineTo(obs.x + obs.width, obs.y + 10);
+                ctx.lineTo(obs.x + 10, obs.y + 10);
+                ctx.lineTo(obs.x, obs.y + obs.height);
                 ctx.fill();
-                
-                // Headlights/taillights
-                ctx.globalAlpha = 0.8;
-                if (car.speed > 0) {
-                    ctx.fillStyle = COLORS.yellow; // Headlights
-                    ctx.fillRect(car.x + car.width - 5, car.y + 5, 5, 8);
-                } else {
-                    ctx.fillStyle = COLORS.red; // Taillights
-                    ctx.fillRect(car.x, car.y + 5, 5, 8);
-                }
-                
-                ctx.globalAlpha = 1;
-            });
-            
-            // Buildings (background)
-            buildings.forEach(b => {
-                ctx.fillStyle = '#14141e';
-                ctx.strokeStyle = '#323246';
-                ctx.lineWidth = 1;
-                ctx.fillRect(b.x, b.y, b.width, b.height);
-                ctx.strokeRect(b.x, b.y, b.width, b.height);
-                
-                // Window lights
-                if (b.lit) {
-                    ctx.fillStyle = b.lightColor;
-                    ctx.globalAlpha = 0.7;
-                    ctx.fillRect(b.x + 8, b.y + 8, 8, 8);
-                    ctx.globalAlpha = 1;
-                }
-            });
-            
-            // Platforms (ground only, boxes drawn separately)
-            platforms.forEach(p => {
-                if (p.type === 'ground') {
-                    ctx.fillStyle = COLORS.darkGray;
-                    ctx.strokeStyle = COLORS.cyan;
-                    ctx.lineWidth = 1;
-                    ctx.fillRect(p.x, p.y, p.width, p.height);
-                    ctx.strokeRect(p.x, p.y, p.width, p.height);
-                }
-            });
-            
-            // Door
-            if (door) {
-                ctx.fillStyle = '#503220';
-                ctx.strokeStyle = COLORS.green;
-                ctx.lineWidth = 2;
-                ctx.fillRect(door.x, door.y, door.width, door.height);
-                ctx.strokeRect(door.x, door.y, door.width, door.height);
-                
-                // Door frame glow
-                ctx.shadowColor = COLORS.green;
-                ctx.shadowBlur = 10;
-                ctx.strokeRect(door.x, door.y, door.width, door.height);
-                ctx.shadowBlur = 0;
-                
-                // Handle
-                ctx.fillStyle = COLORS.yellow;
+            } else {
+                ctx.fillStyle = "brown"; // Boxen 
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            }
+        });
+
+        // Pizzas zeichnen
+        pizzas.forEach(pizza => {
+            if (!pizza.collected) {
+                ctx.fillStyle = "yellow"; // Pizza [cite: 16]
                 ctx.beginPath();
-                ctx.arc(door.x + door.width - 8, door.y + door.height/2, 3, 0, Math.PI * 2);
+                ctx.moveTo(pizza.x, pizza.y);
+                ctx.lineTo(pizza.x + pizza.width, pizza.y);
+                ctx.lineTo(pizza.x + pizza.width / 2, pizza.y + pizza.height);
                 ctx.fill();
-                
-                // "ZUHAUSE" label
-                ctx.fillStyle = COLORS.green;
-                ctx.font = '10px "Press Start 2P", monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('HOME', door.x + door.width/2, door.y - 5);
-            }
-            
-            // Hazards/Boxes (obstacles to jump over - drawn as crates)
-            hazards.forEach(h => {
-                // Draw as cardboard box/crate
-                ctx.fillStyle = '#8B6914'; // Brown cardboard
-                ctx.strokeStyle = COLORS.cyan;
-                ctx.lineWidth = 1;
-                ctx.fillRect(h.x, h.y, h.width, h.height);
-                ctx.strokeRect(h.x, h.y, h.width, h.height);
-                
-                // Box tape/cross detail
-                ctx.strokeStyle = '#A67C00';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(h.x + h.width/2, h.y);
-                ctx.lineTo(h.x + h.width/2, h.y + h.height);
-                ctx.moveTo(h.x, h.y + h.height/2);
-                ctx.lineTo(h.x + h.width, h.y + h.height/2);
-                ctx.stroke();
-            });
-            
-            // Stairs (stone/concrete steps)
-            stairs.forEach(s => {
-                // Stone stair step
-                ctx.fillStyle = '#4a4a5a';
-                ctx.strokeStyle = COLORS.cyan;
-                ctx.lineWidth = 1;
-                ctx.fillRect(s.x, s.y, s.width, s.height);
-                ctx.strokeRect(s.x, s.y, s.width, s.height);
-                
-                // Step edge highlight
-                ctx.fillStyle = '#5a5a6a';
-                ctx.fillRect(s.x, s.y, s.width, 4);
-            });
-            
-            // Coins
-            coins.forEach(coin => {
-                if (!coin.collected) {
-                    // Pulsing animation
-                    const pulse = 1 + Math.sin(Date.now() / 200) * 0.1;
-                    const size = coin.size * pulse;
-                    
-                    ctx.fillStyle = COLORS.yellow;
-                    ctx.strokeStyle = COLORS.cyan;
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.arc(coin.x, coin.y, size/2, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-                }
-            });
-            
-            // Pizzas
-            pizzas.forEach(pizza => {
-                if (!pizza.collected) {
-                    // Floating animation
-                    const float = Math.sin(Date.now() / 300) * 3;
-                    
-                    ctx.fillStyle = '#ffb432';
-                    ctx.strokeStyle = COLORS.magenta;
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(pizza.x, pizza.y - pizza.size/2 + float);
-                    ctx.lineTo(pizza.x + pizza.size/2, pizza.y + pizza.size/2 + float);
-                    ctx.lineTo(pizza.x - pizza.size/2, pizza.y + pizza.size/2 + float);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-                    
-                    // Toppings
-                    ctx.fillStyle = '#c83232';
-                    ctx.beginPath();
-                    ctx.arc(pizza.x - 3, pizza.y + float, 3, 0, Math.PI * 2);
-                    ctx.arc(pizza.x + 4, pizza.y + 3 + float, 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            });
-            
-            // Player
-            if (player) drawPlayer(player);
-            
-            // Particles
-            drawParticles();
-            
-            ctx.restore(); // End camera offset
-            
-            // Flash effect (screen-space)
-            if (gameState.flashAlpha > 0) {
-                ctx.fillStyle = COLORS.magenta;
-                ctx.globalAlpha = gameState.flashAlpha;
-                ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-                ctx.globalAlpha = 1;
-            }
-            
-            // HUD (screen-space, doesn't scroll)
-            ctx.fillStyle = COLORS.cyan;
-            ctx.font = '16px "Press Start 2P", monospace';
-            ctx.textAlign = 'left';
-            ctx.fillText(`Score: ${gameState.score}`, 15, 30);
-            
-            ctx.fillStyle = COLORS.magenta;
-            ctx.textAlign = 'right';
-            ctx.fillText(`${LEVELS[gameState.level]?.name || ''}`, GAME_WIDTH - 15, 30);
-            
-            // Coins/Pizza counter
-            ctx.fillStyle = COLORS.yellow;
-            ctx.font = '12px "VT323", monospace';
-            ctx.textAlign = 'left';
-            ctx.fillText(`Coins: ${gameState.coins}`, 15, 55);
-            ctx.fillStyle = '#ffb432';
-            ctx.fillText(`Pizza: ${gameState.pizzas}`, 15, 75);
-            
-            ctx.restore();
-        }
-        
-        // ============================================
-        // MENU SCREENS
-        // ============================================
-        function drawStartScreen() {
-            ctx.fillStyle = COLORS.bg;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            // City silhouette
-            for (let i = 0; i < 20; i++) {
-                const h = 40 + Math.random() * 80;
-                ctx.fillStyle = '#0f0f19';
-                ctx.strokeStyle = COLORS.cyan;
-                ctx.lineWidth = 1;
-                ctx.fillRect(i * 42, GAME_HEIGHT - h, 38, h);
-                ctx.strokeRect(i * 42, GAME_HEIGHT - h, 38, h);
-            }
-            
-            ctx.fillStyle = COLORS.cyan;
-            ctx.font = '28px "Press Start 2P", monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('SCHNELL', GAME_WIDTH/2, 140);
-            ctx.fillText('NACH HAUSE', GAME_WIDTH/2, 180);
-            
-            ctx.fillStyle = COLORS.magenta;
-            ctx.font = '14px "VT323", monospace';
-            ctx.fillText('Ein Berliner Abenteuer', GAME_WIDTH/2, 220);
-            
-            ctx.fillStyle = COLORS.white;
-            ctx.globalAlpha = 0.8;
-            ctx.font = '16px "VT323", monospace';
-            ctx.fillText('Nach einem langen Tag...', GAME_WIDTH/2, 300);
-            ctx.fillText('möchtest du nur noch nach Hause.', GAME_WIDTH/2, 325);
-            ctx.globalAlpha = 1;
-            
-            ctx.fillStyle = COLORS.yellow;
-            ctx.font = '14px "Press Start 2P", monospace';
-            const blink = Math.sin(Date.now() / 300) > 0;
-            if (blink) ctx.fillText('PRESS SPACE', GAME_WIDTH/2, 420);
-            
-            ctx.fillStyle = COLORS.white;
-            ctx.globalAlpha = 0.6;
-            ctx.font = '12px "VT323", monospace';
-            ctx.fillText('← → Bewegen  |  SPACE Springen', GAME_WIDTH/2, 480);
-            ctx.globalAlpha = 1;
-            
-            ctx.fillStyle = COLORS.green;
-            ctx.font = '14px "VT323", monospace';
-            ctx.fillText(`Highscore: ${gameState.highScore}`, GAME_WIDTH/2, 530);
-        }
-        
-        function drawWinScreen() {
-            if (gameState.score > gameState.highScore) {
-                gameState.highScore = gameState.score;
-                localStorage.setItem('schnellNachHause_highScore', gameState.highScore);
-            }
-            
-            ctx.fillStyle = COLORS.bg;
-            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            ctx.fillStyle = COLORS.green;
-            ctx.font = '28px "Press Start 2P", monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('DU BIST', GAME_WIDTH/2, 150);
-            ctx.fillText('ZUHAUSE!', GAME_WIDTH/2, 190);
-            
-            ctx.fillStyle = COLORS.cyan;
-            ctx.font = '16px "VT323", monospace';
-            ctx.fillText('Endlich angekommen.', GAME_WIDTH/2, 240);
-            
-            ctx.fillStyle = COLORS.yellow;
-            ctx.font = '20px "Press Start 2P", monospace';
-            ctx.fillText(`${gameState.score}`, GAME_WIDTH/2, 320);
-            ctx.font = '12px "VT323", monospace';
-            ctx.fillText('PUNKTE', GAME_WIDTH/2, 345);
-            
-            ctx.fillStyle = COLORS.white;
-            ctx.font = '14px "VT323", monospace';
-            ctx.fillText(`Coins: ${gameState.coins}  |  Pizzas: ${gameState.pizzas}`, GAME_WIDTH/2, 400);
-            
-            ctx.fillStyle = COLORS.magenta;
-            ctx.fillText(`Highscore: ${gameState.highScore}`, GAME_WIDTH/2, 440);
-            
-            ctx.fillStyle = COLORS.white;
-            ctx.globalAlpha = 0.7;
-            const blink = Math.sin(Date.now() / 300) > 0;
-            if (blink) ctx.fillText('SPACE für Neustart', GAME_WIDTH/2, 520);
-            ctx.globalAlpha = 1;
-        }
-        
-        // ============================================
-        // MAIN LOOP
-        // ============================================
-        let lastTime = 0;
-        
-        function gameLoop(timestamp) {
-            const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
-            lastTime = timestamp;
-            
-            if (gameState.scene === 'start') {
-                drawStartScreen();
-            } else if (gameState.scene === 'game') {
-                updateGame(dt);
-                drawGame();
-            } else if (gameState.scene === 'win') {
-                drawWinScreen();
-            }
-            
-            requestAnimationFrame(gameLoop);
-        }
-        
-        // ============================================
-        // INPUT HANDLERS
-        // ============================================
-        document.addEventListener('keydown', (e) => {
-            keys[e.code] = true;
-            
-            if (e.code === 'Space') {
-                e.preventDefault();
-                if (gameState.scene === 'start') {
-                    gameState.scene = 'game';
-                    gameState.score = 0;
-                    gameState.coins = 0;
-                    gameState.pizzas = 0;
-                    loadLevel(0);
-                } else if (gameState.scene === 'game') {
-                    playerJump();
-                } else if (gameState.scene === 'win') {
-                    gameState.scene = 'start';
-                    gameState.score = 0;
-                    gameState.coins = 0;
-                    gameState.pizzas = 0;
-                }
-            }
-            
-            if ((e.code === 'ArrowUp' || e.code === 'KeyW') && gameState.scene === 'game') {
-                playerJump();
             }
         });
-        
-        document.addEventListener('keyup', (e) => {
-            keys[e.code] = false;
-        });
-        
-        // Touch controls
-        const btnLeft = document.getElementById('btn-left');
-        const btnRight = document.getElementById('btn-right');
-        const btnJump = document.getElementById('btn-jump');
-        
-        btnLeft?.addEventListener('touchstart', (e) => { e.preventDefault(); touchInput.left = true; });
-        btnLeft?.addEventListener('touchend', () => touchInput.left = false);
-        btnRight?.addEventListener('touchstart', (e) => { e.preventDefault(); touchInput.right = true; });
-        btnRight?.addEventListener('touchend', () => touchInput.right = false);
-        btnJump?.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (gameState.scene === 'start') {
-                gameState.scene = 'game';
-                gameState.score = 0;
-                gameState.coins = 0;
-                gameState.pizzas = 0;
-                loadLevel(0);
-            } else if (gameState.scene === 'game') {
-                playerJump();
-            } else if (gameState.scene === 'win') {
-                gameState.scene = 'start';
+
+        // UI für Game Over oder Sieg
+        if (!gameRunning) {
+            ctx.fillStyle = "rgba(0,0,0,0.8)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "white";
+            ctx.font = "30px Courier New";
+            ctx.textAlign = "center";
+            if (distanceTraveled >= finishLine) {
+                // Text für Level 3 Ende laut Briefing
+                ctx.fillText("Du bist endlich zu Hause!", canvas.width / 2, canvas.height / 2); // [cite: 19]
+            } else {
+                ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2);
+                ctx.font = "20px Courier New";
+                ctx.fillText("[ENTER] zum Neustarten", canvas.width / 2, canvas.height / 2 + 40);
             }
-        });
-        
-        // Click to start
-        canvas.addEventListener('click', () => {
-            if (gameState.scene === 'start') {
-                gameState.scene = 'game';
-                gameState.score = 0;
-                gameState.coins = 0;
-                gameState.pizzas = 0;
-                loadLevel(0);
-            } else if (gameState.scene === 'win') {
-                gameState.scene = 'start';
-            }
-        });
-        
-        // ============================================
-        // START
-        // ============================================
+        }
+    }
+
+    function gameLoop() {
+        update();
+        draw();
         requestAnimationFrame(gameLoop);
-    </script>
+    }
+
+    function gameOver() {
+        gameRunning = false;
+    }
+
+    function levelComplete() {
+        gameRunning = false;
+        // Hier würde man ins nächste Level wechseln [cite: 18]
+        // Für diesen Prototyp zeigen wir den End-Screen
+    }
+
+    // Start
+    gameLoop();
+
+</script>
 </body>
 </html>
