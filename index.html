@@ -29,6 +29,8 @@
         
         canvas {
             display: block;
+            max-width: 100%;
+            height: auto;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
             box-shadow: 0 0 20px rgba(0, 255, 255, 0.3), 0 0 40px rgba(255, 0, 255, 0.2);
@@ -120,6 +122,23 @@
         const JUMP_FORCE = 580;
         const MOVE_SPEED = 280;
         const MAX_FALL_SPEED = 700;
+
+        // Particles & Effects
+        const PARTICLE_COUNT_DEATH = 15;
+        const PARTICLE_COUNT_JUMP = 5;
+        const PARTICLE_COUNT_COIN = 8;
+        const PARTICLE_COUNT_PIZZA = 12;
+        const PARTICLE_SPEED_DEATH = 200;
+        const PARTICLE_SPEED_PIZZA = 200;
+        const SCREEN_SHAKE_INTENSITY = 15;
+        const DEATH_RESET_DELAY = 500;
+
+        // Gameplay
+        const COIN_COLLECT_RADIUS = 25;
+        const PIZZA_COLLECT_RADIUS = 30;
+        const COIN_SCORE = 10;
+        const PIZZA_SCORE = 50;
+        const BACKGROUND_CAR_COUNT = 4;
         
         // Colors
         const COLORS = {
@@ -243,12 +262,24 @@
         // AUDIO SYSTEM
         // ============================================
         let audioCtx = null;
-        
+        let audioInitialized = false;
+
         function getAudioContext() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
             return audioCtx;
+        }
+
+        function initAudio() {
+            if (audioInitialized) return;
+            try {
+                const ctx = getAudioContext();
+                if (ctx.state === 'suspended') {
+                    ctx.resume();
+                }
+                audioInitialized = true;
+            } catch (e) {}
         }
         
         function playTone(freq, duration, type = 'square', volume = 0.1) {
@@ -474,17 +505,17 @@
                 player.vy = -JUMP_FORCE;
                 player.grounded = false;
                 playJumpSound();
-                spawnParticles(player.x + player.width/2, player.y + player.height, COLORS.cyan, 5);
+                spawnParticles(player.x + player.width/2, player.y + player.height, COLORS.cyan, PARTICLE_COUNT_JUMP);
             }
         }
         
         function playerDeath() {
             if (!player) return;
-            gameState.screenShake = 15;
+            gameState.screenShake = SCREEN_SHAKE_INTENSITY;
             playDeathSound();
-            spawnParticles(player.x + player.width/2, player.y + player.height/2, COLORS.red, 15, 200);
+            spawnParticles(player.x + player.width/2, player.y + player.height/2, COLORS.red, PARTICLE_COUNT_DEATH, PARTICLE_SPEED_DEATH);
             player = null;
-            setTimeout(() => loadLevel(gameState.level), 500);
+            setTimeout(() => loadLevel(gameState.level), DEATH_RESET_DELAY);
         }
         
         // ============================================
@@ -559,7 +590,7 @@
             });
             
             // Spawn background cars (visual only, no collision)
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < BACKGROUND_CAR_COUNT; i++) {
                 cars.push({
                     x: Math.random() * GAME_WIDTH * 2,
                     y: GAME_HEIGHT - 95 - Math.random() * 20, // Behind the street level
@@ -590,12 +621,12 @@
                 if (!coin.collected && player) {
                     const dx = player.x + player.width/2 - coin.x;
                     const dy = player.y + player.height/2 - coin.y;
-                    if (Math.sqrt(dx*dx + dy*dy) < 25) {
+                    if (Math.sqrt(dx*dx + dy*dy) < COIN_COLLECT_RADIUS) {
                         coin.collected = true;
-                        gameState.score += 10;
+                        gameState.score += COIN_SCORE;
                         gameState.coins++;
                         playCoinSound();
-                        spawnParticles(coin.x, coin.y, COLORS.yellow, 8);
+                        spawnParticles(coin.x, coin.y, COLORS.yellow, PARTICLE_COUNT_COIN);
                     }
                 }
             });
@@ -605,12 +636,12 @@
                 if (!pizza.collected && player) {
                     const dx = player.x + player.width/2 - pizza.x;
                     const dy = player.y + player.height/2 - pizza.y;
-                    if (Math.sqrt(dx*dx + dy*dy) < 30) {
+                    if (Math.sqrt(dx*dx + dy*dy) < PIZZA_COLLECT_RADIUS) {
                         pizza.collected = true;
-                        gameState.score += 50;
+                        gameState.score += PIZZA_SCORE;
                         gameState.pizzas++;
                         playPizzaSound();
-                        spawnParticles(pizza.x, pizza.y, '#ffb432', 12, 200);
+                        spawnParticles(pizza.x, pizza.y, '#ffb432', PARTICLE_COUNT_PIZZA, PARTICLE_SPEED_PIZZA);
                     }
                 }
             });
@@ -947,7 +978,8 @@
         // ============================================
         document.addEventListener('keydown', (e) => {
             keys[e.code] = true;
-            
+            initAudio();
+
             if (e.code === 'Space') {
                 e.preventDefault();
                 if (gameState.scene === 'start') {
@@ -986,6 +1018,7 @@
         btnRight?.addEventListener('touchend', () => touchInput.right = false);
         btnJump?.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            initAudio();
             if (gameState.scene === 'start') {
                 gameState.scene = 'game';
                 gameState.score = 0;
@@ -1001,6 +1034,7 @@
         
         // Click to start
         canvas.addEventListener('click', () => {
+            initAudio();
             if (gameState.scene === 'start') {
                 gameState.scene = 'game';
                 gameState.score = 0;
