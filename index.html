@@ -14,7 +14,7 @@
         }
         
         body {
-            background: #0a0a14;
+            background: #000000;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -123,7 +123,7 @@
         
         // Colors
         const COLORS = {
-            bg: '#0a0a14',
+            bg: '#000000',
             cyan: '#00ffff',
             magenta: '#ff00ff',
             yellow: '#ffff00',
@@ -136,6 +136,11 @@
             jeans: '#6490b4',
             skin: '#dcb496',
             sneakers: '#3ca05a',
+            // Road colors
+            road: '#3a3a3a',
+            roadLine: '#ffffff',
+            // Building colors for neon city
+            buildingColors: ['#ff00ff', '#00ffff', '#ff69b4', '#4169e1', '#9932cc', '#ffff00', '#00ff00', '#ffd700'],
         };
         
         // ============================================
@@ -169,6 +174,7 @@
         let cars = [];
         let door = null;
         let buildings = [];
+        let skylineBuildings = []; // Background city skyline
         let particles = [];
         
         // Input
@@ -514,9 +520,46 @@
             hazards = [];
             cars = [];
             buildings = [];
+            skylineBuildings = [];
             door = null;
             particles = [];
             player = null;
+
+            // Generate colorful city skyline background
+            const levelWidth = LEVELS[levelIndex].map[0].length * TILE_SIZE;
+            for (let i = 0; i < levelWidth / 60 + 5; i++) {
+                const buildingWidth = 50 + Math.random() * 40;
+                const buildingHeight = 150 + Math.random() * 200;
+                const buildingColor = COLORS.buildingColors[Math.floor(Math.random() * COLORS.buildingColors.length)];
+
+                // Generate windows grid for this building
+                const windows = [];
+                const windowRows = Math.floor(buildingHeight / 25);
+                const windowCols = Math.floor(buildingWidth / 20);
+                for (let row = 0; row < windowRows; row++) {
+                    for (let col = 0; col < windowCols; col++) {
+                        const windowColor = COLORS.buildingColors[Math.floor(Math.random() * COLORS.buildingColors.length)];
+                        const isLit = Math.random() > 0.15;
+                        windows.push({
+                            x: 8 + col * 18,
+                            y: 8 + row * 22,
+                            width: 12,
+                            height: 16,
+                            color: windowColor,
+                            lit: isLit
+                        });
+                    }
+                }
+
+                skylineBuildings.push({
+                    x: i * 65 - 50,
+                    y: GAME_HEIGHT - 110 - buildingHeight,
+                    width: buildingWidth,
+                    height: buildingHeight,
+                    color: buildingColor,
+                    windows: windows
+                });
+            }
             
             const level = LEVELS[levelIndex];
             
@@ -559,15 +602,19 @@
             });
             
             // Spawn background cars (visual only, no collision)
-            for (let i = 0; i < 4; i++) {
+            const carColors = ['#a8d948', '#c8e848', '#88c840', '#78b838', '#98d850', '#68a830'];
+            for (let i = 0; i < 6; i++) {
+                const goingRight = Math.random() > 0.5;
                 cars.push({
-                    x: Math.random() * GAME_WIDTH * 2,
-                    y: GAME_HEIGHT - 95 - Math.random() * 20, // Behind the street level
-                    width: 60 + Math.random() * 30,
-                    height: 25 + Math.random() * 10,
-                    speed: (80 + Math.random() * 60) * (Math.random() > 0.5 ? 1 : -1),
-                    color: `hsl(${Math.random() * 360}, 60%, 45%)`,
+                    x: Math.random() * GAME_WIDTH * 2.5,
+                    y: GAME_HEIGHT - 80 - (goingRight ? 0 : 25), // Two lanes
+                    width: 70 + Math.random() * 20,
+                    height: 28,
+                    speed: (60 + Math.random() * 40) * (goingRight ? 1 : -1),
+                    color: carColors[Math.floor(Math.random() * carColors.length)],
+                    cabinColor: carColors[Math.floor(Math.random() * carColors.length)],
                     isBackground: true,
+                    goingRight: goingRight
                 });
             }
         }
@@ -656,55 +703,143 @@
                 );
             }
             
-            // Background
+            // Background - black sky
             ctx.fillStyle = COLORS.bg;
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
+
             // Apply camera offset for scrolling
             ctx.save();
             ctx.translate(-gameState.cameraX, 0);
-            
-            // Background cars (behind everything)
+
+            // Draw colorful city skyline buildings (background)
+            skylineBuildings.forEach(building => {
+                // Building body with gradient effect
+                ctx.fillStyle = building.color;
+                ctx.strokeStyle = '#333333';
+                ctx.lineWidth = 2;
+                ctx.fillRect(building.x, building.y, building.width, building.height);
+                ctx.strokeRect(building.x, building.y, building.width, building.height);
+
+                // Draw windows
+                building.windows.forEach(win => {
+                    if (win.lit) {
+                        ctx.fillStyle = win.color;
+                        ctx.globalAlpha = 0.9;
+                    } else {
+                        ctx.fillStyle = '#111111';
+                        ctx.globalAlpha = 0.8;
+                    }
+                    ctx.fillRect(building.x + win.x, building.y + win.y, win.width, win.height);
+                });
+                ctx.globalAlpha = 1;
+            });
+
+            // Draw road background
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(-100, GAME_HEIGHT - 110, GAME_WIDTH * 4, 110);
+
+            // Draw road lane markings (dashed white lines)
+            ctx.fillStyle = COLORS.roadLine;
+            for (let i = -10; i < 300; i++) {
+                // Center lane divider
+                ctx.fillRect(i * 40, GAME_HEIGHT - 68, 25, 4);
+            }
+
+            // Draw edge lines (solid)
+            ctx.fillRect(-100, GAME_HEIGHT - 35, GAME_WIDTH * 4, 3);
+            ctx.fillRect(-100, GAME_HEIGHT - 108, GAME_WIDTH * 4, 3);
+
+            // Background cars with detailed drawing
             cars.forEach(car => {
-                ctx.globalAlpha = 0.4;
+                ctx.globalAlpha = 0.85;
+
+                // Car shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(car.x + 3, car.y + car.height - 2, car.width, 6);
+
+                // Car body (main rectangle)
                 ctx.fillStyle = car.color;
-                ctx.strokeStyle = COLORS.cyan;
-                ctx.lineWidth = 1;
-                ctx.fillRect(car.x, car.y, car.width, car.height);
-                ctx.strokeRect(car.x, car.y, car.width, car.height);
-                
-                // Headlights
-                ctx.fillStyle = COLORS.yellow;
-                ctx.globalAlpha = 0.6;
-                const lightX = car.speed > 0 ? car.x + car.width - 5 : car.x;
-                ctx.fillRect(lightX, car.y + 5, 4, 6);
-                ctx.fillRect(lightX, car.y + car.height - 11, 4, 6);
+                ctx.strokeStyle = '#333333';
+                ctx.lineWidth = 2;
+                ctx.fillRect(car.x, car.y + 8, car.width, car.height - 8);
+                ctx.strokeRect(car.x, car.y + 8, car.width, car.height - 8);
+
+                // Car cabin (top part)
+                const cabinX = car.goingRight ? car.x + car.width * 0.25 : car.x + car.width * 0.15;
+                const cabinWidth = car.width * 0.5;
+                ctx.fillStyle = car.cabinColor;
+                ctx.fillRect(cabinX, car.y, cabinWidth, 12);
+                ctx.strokeRect(cabinX, car.y, cabinWidth, 12);
+
+                // Windows (dark)
+                ctx.fillStyle = '#222222';
+                ctx.fillRect(cabinX + 3, car.y + 2, cabinWidth - 6, 8);
+
+                // Wheels
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.arc(car.x + 15, car.y + car.height, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(car.x + car.width - 15, car.y + car.height, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Wheel rims
+                ctx.fillStyle = '#444444';
+                ctx.beginPath();
+                ctx.arc(car.x + 15, car.y + car.height, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(car.x + car.width - 15, car.y + car.height, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Headlights/Taillights
+                if (car.goingRight) {
+                    // Headlights (front - right side)
+                    ctx.fillStyle = '#ffff88';
+                    ctx.fillRect(car.x + car.width - 4, car.y + 12, 4, 5);
+                    ctx.fillRect(car.x + car.width - 4, car.y + car.height - 8, 4, 5);
+                    // Taillights (back - left side)
+                    ctx.fillStyle = '#ff3333';
+                    ctx.fillRect(car.x, car.y + 12, 3, 5);
+                    ctx.fillRect(car.x, car.y + car.height - 8, 3, 5);
+                } else {
+                    // Headlights (front - left side)
+                    ctx.fillStyle = '#ffff88';
+                    ctx.fillRect(car.x, car.y + 12, 4, 5);
+                    ctx.fillRect(car.x, car.y + car.height - 8, 4, 5);
+                    // Taillights (back - right side)
+                    ctx.fillStyle = '#ff3333';
+                    ctx.fillRect(car.x + car.width - 3, car.y + 12, 3, 5);
+                    ctx.fillRect(car.x + car.width - 3, car.y + car.height - 8, 3, 5);
+                }
+
                 ctx.globalAlpha = 1;
             });
             
-            // Buildings (background)
+            // Buildings from level tiles (decorative overlay on skyline)
             buildings.forEach(b => {
-                ctx.fillStyle = '#14141e';
-                ctx.strokeStyle = '#323246';
-                ctx.lineWidth = 1;
-                ctx.fillRect(b.x, b.y, b.width, b.height);
-                ctx.strokeRect(b.x, b.y, b.width, b.height);
-                
-                // Window lights
+                // Additional colorful window effect on top of skyline
+                const windowColor = COLORS.buildingColors[Math.floor(Math.random() * COLORS.buildingColors.length)];
                 if (b.lit) {
                     ctx.fillStyle = b.lightColor;
-                    ctx.globalAlpha = 0.7;
-                    ctx.fillRect(b.x + 8, b.y + 8, 8, 8);
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillRect(b.x + 4, b.y + 4, b.width - 8, b.height - 8);
                     ctx.globalAlpha = 1;
                 }
             });
-            
-            // Platforms (ground)
+
+            // Platforms (ground) - drawn as part of the road/sidewalk
             platforms.forEach(p => {
-                ctx.fillStyle = COLORS.darkGray;
-                ctx.strokeStyle = COLORS.cyan;
-                ctx.lineWidth = 1;
+                // Sidewalk/elevated platform look
+                ctx.fillStyle = '#4a4a4a';
                 ctx.fillRect(p.x, p.y, p.width, p.height);
+                // Top edge highlight
+                ctx.fillStyle = '#666666';
+                ctx.fillRect(p.x, p.y, p.width, 3);
+                // Border
+                ctx.strokeStyle = '#333333';
+                ctx.lineWidth = 1;
                 ctx.strokeRect(p.x, p.y, p.width, p.height);
             });
             
@@ -835,19 +970,74 @@
         // ============================================
         // MENU SCREENS
         // ============================================
+        // Generate static start screen buildings (only once)
+        let startScreenBuildings = null;
+        function generateStartScreenBuildings() {
+            const buildings = [];
+            for (let i = 0; i < 20; i++) {
+                const h = 100 + Math.random() * 180;
+                const w = 35 + Math.random() * 15;
+                const color = COLORS.buildingColors[Math.floor(Math.random() * COLORS.buildingColors.length)];
+                const windows = [];
+                const windowRows = Math.floor(h / 25);
+                const windowCols = Math.floor(w / 18);
+                for (let row = 0; row < windowRows; row++) {
+                    for (let col = 0; col < windowCols; col++) {
+                        const windowColor = COLORS.buildingColors[Math.floor(Math.random() * COLORS.buildingColors.length)];
+                        windows.push({
+                            x: 5 + col * 15,
+                            y: 8 + row * 22,
+                            width: 10,
+                            height: 14,
+                            color: windowColor,
+                            lit: Math.random() > 0.1
+                        });
+                    }
+                }
+                buildings.push({ x: i * 42, h, w, color, windows });
+            }
+            return buildings;
+        }
+
         function drawStartScreen() {
             ctx.fillStyle = COLORS.bg;
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-            
-            // City silhouette
-            for (let i = 0; i < 20; i++) {
-                const h = 40 + Math.random() * 80;
-                ctx.fillStyle = '#0f0f19';
-                ctx.strokeStyle = COLORS.cyan;
-                ctx.lineWidth = 1;
-                ctx.fillRect(i * 42, GAME_HEIGHT - h, 38, h);
-                ctx.strokeRect(i * 42, GAME_HEIGHT - h, 38, h);
+
+            // Generate buildings once
+            if (!startScreenBuildings) {
+                startScreenBuildings = generateStartScreenBuildings();
             }
+
+            // Draw road
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(0, GAME_HEIGHT - 60, GAME_WIDTH, 60);
+            // Road markings
+            ctx.fillStyle = COLORS.roadLine;
+            for (let i = 0; i < 25; i++) {
+                ctx.fillRect(i * 40 + 5, GAME_HEIGHT - 35, 25, 4);
+            }
+
+            // Colorful city skyline
+            startScreenBuildings.forEach(b => {
+                ctx.fillStyle = b.color;
+                ctx.strokeStyle = '#333333';
+                ctx.lineWidth = 2;
+                ctx.fillRect(b.x, GAME_HEIGHT - 60 - b.h, b.w, b.h);
+                ctx.strokeRect(b.x, GAME_HEIGHT - 60 - b.h, b.w, b.h);
+
+                // Windows
+                b.windows.forEach(win => {
+                    if (win.lit) {
+                        ctx.fillStyle = win.color;
+                        ctx.globalAlpha = 0.9;
+                    } else {
+                        ctx.fillStyle = '#111111';
+                        ctx.globalAlpha = 0.7;
+                    }
+                    ctx.fillRect(b.x + win.x, GAME_HEIGHT - 60 - b.h + win.y, win.width, win.height);
+                });
+                ctx.globalAlpha = 1;
+            });
             
             ctx.fillStyle = COLORS.cyan;
             ctx.font = '28px "Press Start 2P", monospace';
@@ -887,9 +1077,34 @@
                 gameState.highScore = gameState.score;
                 localStorage.setItem('schnellNachHause_highScore', gameState.highScore);
             }
-            
+
             ctx.fillStyle = COLORS.bg;
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            // Reuse start screen buildings for consistency
+            if (!startScreenBuildings) {
+                startScreenBuildings = generateStartScreenBuildings();
+            }
+
+            // Draw road
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(0, GAME_HEIGHT - 60, GAME_WIDTH, 60);
+            ctx.fillStyle = COLORS.roadLine;
+            for (let i = 0; i < 25; i++) {
+                ctx.fillRect(i * 40 + 5, GAME_HEIGHT - 35, 25, 4);
+            }
+
+            // Colorful city skyline (dimmed for win screen)
+            ctx.globalAlpha = 0.5;
+            startScreenBuildings.forEach(b => {
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x, GAME_HEIGHT - 60 - b.h, b.w, b.h);
+                b.windows.forEach(win => {
+                    ctx.fillStyle = win.lit ? win.color : '#111111';
+                    ctx.fillRect(b.x + win.x, GAME_HEIGHT - 60 - b.h + win.y, win.width, win.height);
+                });
+            });
+            ctx.globalAlpha = 1;
             
             ctx.fillStyle = COLORS.green;
             ctx.font = '28px "Press Start 2P", monospace';
